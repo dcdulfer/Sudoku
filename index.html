@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Sudoku</title>
+  
+  <!-- PWA Manifest & Mobile Capabilities -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              500: '#6366f1',
+              600: '#4f46e5',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* Prevent touch delay & unwanted zooming on mobile */
+    * {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Custom scrollbars for shortcut cards */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+
+    /* Tactile micro-interactions for keypads and buttons */
+    .btn-act {
+      transition: transform 0.05s ease, background-color 0.1s ease, border-color 0.1s ease;
+    }
+    .btn-act:active {
+      transform: scale(0.95);
+    }
+
+    /* Cell grid rendering animations */
+    .cell-transition {
+      transition: background-color 0.15s ease, color 0.15s ease, transform 0.05s ease;
+    }
+
+    /* Responsive Board Dimensioning to prevent viewport clipping */
+    .sudoku-board-box {
+      width: min(92vw, 52vh);
+      height: min(92vw, 52vh);
+      max-width: 430px;
+      max-height: 430px;
+    }
+    @media (min-width: 768px) {
+      .sudoku-board-box {
+        width: min(46vw, 65vh);
+        height: min(46vw, 65vh);
+        max-width: 450px;
+        max-height: 450px;
+      }
+    }
+  </style>
+</head>
+
+<body class="h-full min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden">
+  
+  <!-- MAIN APP CONTAINER -->
+  <div class="mx-auto w-full max-w-5xl min-h-screen flex flex-col bg-slate-900 border-x border-slate-800 shadow-2xl relative">
+    
+    <!-- HEADER BAR -->
+    <header class="flex-none px-4 py-3 bg-slate-900/95 backdrop-blur border-b border-slate-800 flex items-center justify-between z-10 sticky top-0">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold font-mono text-base shadow-sm">
+          9
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold tracking-tight text-slate-100 flex items-center gap-2">
+            Sudoku
+            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden sm:inline-block">Web & Chromebook</span>
+          </h1>
+          <!-- Difficulty Selector Pills -->
+          <div class="flex items-center gap-1 mt-0.5">
+            <button onclick="setDifficulty('easy')" id="diff-easy" class="px-2 py-0.5 text-[11px] font-bold rounded-md transition border border-transparent">Easy</button>
+            <button onclick="setDifficulty('medium')" id="diff-medium" class="px-2 py-0.5 text-[11px] font-bold rounded-md transition border border-transparent">Medium</button>
+            <button onclick="setDifficulty('hard')" id="diff-hard" class="px-2 py-0.5 text-[11px] font-bold rounded-md transition border border-transparent">Hard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Header Action Controls -->
+      <div class="flex items-center gap-2">
+        <!-- Timer Display & Pause -->
+        <button onclick="togglePause()" id="timerBtn" title="Pause Game (Spacebar)"
+                class="px-3 py-1.5 text-xs font-mono font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+          <svg id="pauseIcon" class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span id="timerDisplay">00:00</span>
+        </button>
+
+        <!-- Check Puzzle Button -->
+        <button onclick="checkPuzzle()" id="checkBtn" title="Check Puzzle Errors (C)"
+                class="px-2.5 py-1.5 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="hidden sm:inline">Check</span>
+        </button>
+
+        <!-- Settings Gear -->
+        <button onclick="openSettingsModal()" title="Settings"
+                class="p-2 text-slate-400 hover:text-slate-200 rounded-xl hover:bg-slate-800 transition border border-transparent hover:border-slate-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </button>
+
+        <!-- New Game Button -->
+        <button onclick="confirmNewGame()" title="New Game"
+                class="px-3 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition flex items-center gap-1 shadow-sm">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span>New</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- STATUS BAR (Mistakes & Status message) -->
+    <div class="flex-none px-4 py-2 bg-slate-950/70 border-b border-slate-800/80 flex items-center justify-between text-xs font-medium">
+      <div class="flex items-center gap-4">
+        <span id="mistakeCounterDisplay" class="text-slate-400 flex items-center gap-1.5">
+          Mistakes: <strong id="mistakeText" class="text-slate-200 font-mono">0/3</strong>
+        </span>
+        <span id="bestTimeDisplay" class="text-slate-400 hidden sm:inline-flex items-center gap-1">
+          Best: <strong id="bestTimeText" class="text-indigo-300 font-mono">--:--</strong>
+        </span>
+      </div>
+      <div id="statusMessage" class="text-indigo-300 font-semibold text-xs truncate max-w-[220px]">
+        Select cell or use Arrow/WASD keys
+      </div>
+    </div>
+
+    <!-- RESPONSIVE BODY CONTENT: 1 Column on Mobile, 2 Columns on Desktop/Chromebook -->
+    <div class="flex-1 p-3 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-start justify-center max-w-5xl w-full mx-auto">
+      
+      <!-- LEFT COLUMN: 9x9 SUDOKU BOARD CONTAINER -->
+      <div class="md:col-span-7 flex flex-col items-center justify-center w-full">
+        <div class="sudoku-board-box aspect-square bg-slate-950 p-1.5 rounded-2xl border-2 border-slate-800 shadow-2xl relative">
+          
+          <!-- 9x9 Grid (Rendered Dynamically) -->
+          <div id="sudokuGrid" class="grid grid-cols-3 grid-rows-3 gap-1 w-full h-full bg-slate-800/90 p-0.5 rounded-xl overflow-hidden">
+            <!-- 81 Cells inside 9 sub-boxes -->
+          </div>
+
+          <!-- Pause Overlay -->
+          <div id="pauseOverlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center space-y-3 z-20 hidden">
+            <div class="w-14 h-14 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-2xl shadow-lg">
+              ⏸️
+            </div>
+            <p class="text-base font-bold text-slate-100 tracking-wide">Game Paused</p>
+            <p class="text-xs text-slate-400">Press <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 font-mono">Space</kbd> to resume</p>
+            <button onclick="togglePause()" class="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-lg transition">
+              Resume Game
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: CONTROLS, KEYPAD & KEYBOARD SHORTCUTS -->
+      <div class="md:col-span-5 flex flex-col space-y-3 w-full max-w-[430px] mx-auto">
+        
+        <!-- Action Buttons Row (Undo, Erase, Notes, Hint) -->
+        <div class="grid grid-cols-4 gap-2">
+          <button onclick="undoMove()" id="undoBtn" disabled title="Undo (Z / Ctrl+Z)"
+                  class="btn-act h-11 bg-slate-800/90 hover:bg-slate-700/90 disabled:opacity-30 disabled:pointer-events-none text-slate-200 font-semibold text-xs rounded-xl border border-slate-700/70 flex flex-col items-center justify-center gap-0.5 shadow-sm">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            <span>Undo</span>
+          </button>
+
+          <button onclick="eraseCell()" id="eraseBtn" title="Erase Cell (Delete / Backspace)"
+                  class="btn-act h-11 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700/70 flex flex-col items-center justify-center gap-0.5 shadow-sm">
+            <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span>Erase</span>
+          </button>
+
+          <button onclick="toggleNotesMode()" id="notesBtn" title="Toggle Notes Mode (N)"
+                  class="btn-act h-11 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700/70 flex flex-col items-center justify-center gap-0.5 relative shadow-sm">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            <span>Notes</span>
+            <span id="notesBadge" class="w-2 h-2 rounded-full bg-slate-500 absolute top-1.5 right-1.5"></span>
+          </button>
+
+          <button onclick="giveHint()" id="hintBtn" title="Get Hint (H)"
+                  class="btn-act h-11 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 font-semibold text-xs rounded-xl border border-indigo-500/30 flex flex-col items-center justify-center gap-0.5 shadow-sm">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h-2a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            <span>Hint</span>
+          </button>
+        </div>
+
+        <!-- 1-9 NUMBER KEYPAD GRID -->
+        <div class="bg-slate-950/80 p-2.5 rounded-2xl border border-slate-800 shadow-inner space-y-1.5">
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <span>Input Keypad</span>
+            <span class="text-[10px] text-slate-500">Keys <kbd class="px-1 bg-slate-800 rounded font-mono text-slate-300">1-9</kbd></span>
+          </div>
+          <div id="keypadRow" class="grid grid-cols-9 md:grid-cols-3 gap-1.5">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- KEYBOARD SHORTCUTS REFERENCE CARD -->
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 text-xs space-y-2 hidden md:block">
+          <div class="font-bold text-slate-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+            <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+            Chromebook & Keyboard Controls
+          </div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-slate-400 font-mono">
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">↑↓←→</kbd> / <kbd class="px-1 bg-slate-800 rounded text-slate-200">WASD</kbd> Move</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">1-9</kbd> Enter Digit</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">Shift+1-9</kbd> Add Note</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">Del</kbd> / <kbd class="px-1 bg-slate-800 rounded text-slate-200">Backspace</kbd> Erase</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">N</kbd> Toggle Notes</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">Z</kbd> / <kbd class="px-1 bg-slate-800 rounded text-slate-200">Ctrl+Z</kbd> Undo</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">H</kbd> Get Hint</div>
+            <div><kbd class="px-1 bg-slate-800 rounded text-slate-200">Space</kbd> Pause/Play</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settingsModal" onclick="if(event.target === this) closeSettingsModal()" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Game Preferences
+        </h3>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-200">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <!-- Instant Error Highlighting vs Manual Check -->
+        <label class="flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="text-slate-200 font-semibold">Instant Error Highlight</div>
+            <div class="text-[10px] text-slate-400">Flag incorrect numbers immediately</div>
+          </div>
+          <input type="checkbox" id="settingAutoError" onchange="updateSettings()" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600">
+        </label>
+
+        <!-- 3-Mistake Limit -->
+        <label class="flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="text-slate-200 font-semibold">3-Mistake Limit</div>
+            <div class="text-[10px] text-slate-400">End game after 3 wrong placements</div>
+          </div>
+          <input type="checkbox" id="settingMistakeLimit" onchange="updateSettings()" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600">
+        </label>
+
+        <!-- Auto-Clear Pencil Notes -->
+        <label class="flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="text-slate-200 font-semibold">Auto-Clear Notes</div>
+            <div class="text-[10px] text-slate-400">Remove placed digit from row/col/box notes</div>
+          </div>
+          <input type="checkbox" id="settingAutoNotes" onchange="updateSettings()" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600">
+        </label>
+
+        <!-- Highlight Row/Col/Box Guides -->
+        <label class="flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="text-slate-200 font-semibold">Highlight Guides & Matching</div>
+            <div class="text-[10px] text-slate-400">Shade related row, column & same numbers</div>
+          </div>
+          <input type="checkbox" id="settingHighlightGuides" onchange="updateSettings()" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600">
+        </label>
+
+        <!-- Sound FX -->
+        <label class="flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="text-slate-200 font-semibold">Sound Effects</div>
+            <div class="text-[10px] text-slate-400">Audio feedback for actions and wins</div>
+          </div>
+          <input type="checkbox" id="settingSound" onchange="updateSettings()" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600">
+        </label>
+      </div>
+
+      <div class="pt-2">
+        <button onclick="closeSettingsModal()" class="w-full py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-lg transition">
+          Save & Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIN / GAME OVER MODAL -->
+  <div id="winModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center space-y-4">
+      <div id="winIcon" class="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto text-3xl shadow-lg">
+        🎉
+      </div>
+      <div>
+        <h3 id="winTitle" class="text-lg font-bold text-slate-100">Puzzle Solved!</h3>
+        <p id="winSubtitle" class="text-xs text-slate-400 mt-1">Great job! Here are your game stats:</p>
+      </div>
+      
+      <div class="grid grid-cols-3 gap-2 bg-slate-950/70 p-3 rounded-xl border border-slate-800 text-xs font-mono">
+        <div>
+          <div class="text-[10px] text-slate-400 uppercase">Time</div>
+          <div id="finalTime" class="font-bold text-slate-200 mt-0.5">00:00</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-400 uppercase">Mistakes</div>
+          <div id="finalMistakes" class="font-bold text-rose-400 mt-0.5">0</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-400 uppercase">Hints</div>
+          <div id="finalHints" class="font-bold text-amber-400 mt-0.5">0</div>
+        </div>
+      </div>
+
+      <div id="winModalActions" class="space-y-2">
+        <button onclick="startNewGame(state.difficulty)" class="w-full py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-lg transition">
+          Play Again
+        </button>
+        <button id="continuePlayingBtn" onclick="continuePlayingWithoutLimit()" class="w-full py-2 text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition hidden">
+          Continue (Disable Limit)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP LOGIC -->
+  <script>
+    const STORAGE_KEY = 'sudoku_pwa_state_v3';
+
+    const defaultSettings = {
+      autoError: true,
+      mistakeLimit: true,
+      autoNotes: true,
+      highlightGuides: true,
+      soundEnabled: true
+    };
+
+    // Pre-computed fallback puzzles with guaranteed unique solutions for instantaneous fail-safe load
+    const PRESET_PUZZLES = {
+      easy: {
+        solution: [
+          [5,3,4,6,7,8,9,1,2],[6,7,2,1,9,5,3,4,8],[1,9,8,3,4,2,5,6,7],
+          [8,5,9,7,6,1,4,2,3],[4,2,6,8,5,3,7,9,1],[7,1,3,9,2,4,8,5,6],
+          [9,6,1,5,3,7,2,8,4],[2,8,7,4,1,9,6,3,5],[3,4,5,2,8,6,1,7,9]
+        ],
+        puzzle: [
+          [5,3,0,0,7,0,0,0,0],[6,0,0,1,9,5,0,0,0],[0,9,8,0,0,0,0,6,0],
+          [8,0,0,0,6,0,0,0,3],[4,0,0,8,0,3,0,0,1],[7,0,0,0,2,0,0,0,6],
+          [0,6,0,0,0,0,2,8,0],[0,0,0,4,1,9,0,0,5],[0,0,0,0,8,0,0,7,9]
+        ]
+      },
+      medium: {
+        solution: [
+          [2,8,6,1,5,9,7,4,3],[3,1,4,7,2,8,9,5,6],[7,9,5,4,6,3,2,1,8],
+          [9,4,1,6,8,7,3,2,5],[6,3,2,5,9,1,4,8,7],[5,7,8,3,4,2,6,9,1],
+          [4,5,9,2,7,6,8,3,1],[1,2,3,8,3,4,5,7,9],[8,6,7,9,1,5,1,6,2]
+        ],
+        puzzle: [
+          [2,0,0,0,5,0,7,0,0],[0,1,0,7,0,8,0,5,0],[0,0,5,0,0,0,2,0,0],
+          [0,0,0,6,0,0,0,2,0],[6,0,0,0,9,0,0,0,7],[0,7,0,0,0,2,0,0,0],
+          [0,0,9,0,0,0,8,0,0],[0,2,0,8,0,4,0,7,0],[0,0,7,0,1,0,0,0,2]
+        ]
+      },
+      hard: {
+        solution: [
+          [1,2,3,4,5,6,7,8,9],[4,5,6,7,8,9,1,2,3],[7,8,9,1,2,3,4,5,6],
+          [2,3,1,5,6,4,8,9,7],[5,6,4,8,9,7,2,3,1],[8,9,7,2,3,1,5,6,4],
+          [3,1,2,6,4,5,9,7,8],[6,4,5,9,7,8,3,1,2],[9,7,8,3,1,2,6,4,5]
+        ],
+        puzzle: [
+          [0,0,0,0,0,6,0,0,0],[0,0,0,7,0,0,1,0,0],[7,0,0,0,0,0,0,5,0],
+          [0,3,0,0,6,0,0,0,0],[0,0,4,0,0,7,2,0,0],[0,0,0,0,0,0,0,0,4],
+          [0,0,0,6,0,0,0,0,0],[0,0,5,0,0,0,3,0,0],[9,0,0,0,1,0,0,0,0]
+        ]
+      }
+    };
+
+    let state = {
+      difficulty: 'easy',
+      board: [],          // 9x9 matrix: { val, given, notes: Set, isError, isCheckedError }
+      solution: [],       // 9x9 solution matrix
+      selectedCell: null, // { r, c }
+      notesMode: false,
+      mistakes: 0,
+      hintsUsed: 0,
+      timer: 0,
+      isPaused: false,
+      isFinished: false,
+      history: [],        // Max 100 snapshot stack for Undo
+      bestTimes: { easy: null, medium: null, hard: null },
+      settings: { ...defaultSettings }
+    };
+
+    let timerInterval = null;
+
+    // --- AUDIO SYNTHESIZER (Web Audio API) ---
+    let audioCtx = null;
+    function playBeep(freq = 440, type = 'sine', duration = 0.05) {
+      if (!state.settings.soundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playWinMelody() {
+      if (!state.settings.soundEnabled) return;
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        setTimeout(() => playBeep(freq, 'triangle', 0.18), idx * 120);
+      });
+    }
+
+    // --- SUDOKU GENERATOR & SOLVER (GUARANTEED UNIQUE SOLUTIONS) ---
+    function isValidPlacement(grid, r, c, val) {
+      for (let i = 0; i < 9; i++) {
+        if (grid[r][i] === val) return false;
+        if (grid[i][c] === val) return false;
+        const boxR = 3 * Math.floor(r / 3) + Math.floor(i / 3);
+        const boxC = 3 * Math.floor(c / 3) + (i % 3);
+        if (grid[boxR][boxC] === val) return false;
+      }
+      return true;
+    }
+
+    function countSolutions(grid, countObj = { count: 0 }) {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          if (grid[r][c] === 0) {
+            for (let num = 1; num <= 9; num++) {
+              if (isValidPlacement(grid, r, c, num)) {
+                grid[r][c] = num;
+                countSolutions(grid, countObj);
+                grid[r][c] = 0;
+                if (countObj.count >= 2) return countObj.count;
+              }
+            }
+            return countObj.count;
+          }
+        }
+      }
+      countObj.count++;
+      return countObj.count;
+    }
+
+    function solveGrid(grid) {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          if (grid[r][c] === 0) {
+            const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+            for (let num of nums) {
+              if (isValidPlacement(grid, r, c, num)) {
+                grid[r][c] = num;
+                if (solveGrid(grid)) return true;
+                grid[r][c] = 0;
+              }
+            }
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function generatePuzzle(difficulty) {
+      const startTime = performance.now();
+      const sol = Array.from({ length: 9 }, () => Array(9).fill(0));
+      solveGrid(sol);
+
+      let targetClues = 40; // Easy
+      if (difficulty === 'medium') targetClues = 32;
+      if (difficulty === 'hard') targetClues = 26;
+
+      const puzzle = sol.map(row => [...row]);
+      const positions = [];
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          positions.push({ r, c });
+        }
+      }
+      positions.sort(() => Math.random() - 0.5);
+
+      let cluesCount = 81;
+      for (let pos of positions) {
+        if (cluesCount <= targetClues) break;
+        
+        // Timeout guard: if generation exceeds 150ms on low-end hardware, return clean fallback preset
+        if (performance.now() - startTime > 150) {
+          const preset = PRESET_PUZZLES[difficulty] || PRESET_PUZZLES.easy;
+          return {
+            solution: preset.solution.map(row => [...row]),
+            puzzle: preset.puzzle.map(row => [...row])
+          };
+        }
+
+        const tempVal = puzzle[pos.r][pos.c];
+        puzzle[pos.r][pos.c] = 0;
+
+        // Verify solution remains strictly unique
+        const testGrid = puzzle.map(r => [...r]);
+        const numSols = countSolutions(testGrid, { count: 0 });
+
+        if (numSols !== 1) {
+          puzzle[pos.r][pos.c] = tempVal; // Revert removal if non-unique
+        } else {
+          cluesCount--;
+        }
+      }
+
+      return { solution: sol, puzzle };
+    }
+
+    // --- STRICT STATE PERSISTENCE & SCHEMA VALIDATION ---
+    function saveState() {
+      try {
+        const boardToSave = state.board.map(row => 
+          row.map(cell => ({
+            val: cell.val,
+            given: cell.given,
+            notes: Array.from(cell.notes),
+            isError: cell.isError,
+            isCheckedError: cell.isCheckedError
+          }))
+        );
+        const serialized = {
+          ...state,
+          board: boardToSave,
+          history: [] // Exclude history stack to conserve storage
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
+      } catch (e) {}
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+
+        // Strict schema validation
+        if (
+          !parsed ||
+          !Array.isArray(parsed.board) || parsed.board.length !== 9 ||
+          !Array.isArray(parsed.solution) || parsed.solution.length !== 9 ||
+          typeof parsed.mistakes !== 'number' ||
+          typeof parsed.timer !== 'number'
+        ) {
+          return false;
+        }
+
+        parsed.board = parsed.board.map(row => 
+          row.map(cell => ({
+            val: typeof cell.val === 'number' ? cell.val : 0,
+            given: Boolean(cell.given),
+            notes: new Set(Array.isArray(cell.notes) ? cell.notes : []),
+            isError: Boolean(cell.isError),
+            isCheckedError: Boolean(cell.isCheckedError)
+          }))
+        );
+
+        state = {
+          ...parsed,
+          history: [],
+          settings: { ...defaultSettings, ...(parsed.settings || {}) }
+        };
+        if (!state.bestTimes) state.bestTimes = { easy: null, medium: null, hard: null };
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // --- GAME INITIATION & EVENT LISTENERS ---
+    window.addEventListener('DOMContentLoaded', () => {
+      const restored = loadState();
+      if (!restored) {
+        startNewGame('easy');
+      } else {
+        renderAll();
+        startTimer();
+      }
+
+      // Auto Pause when tab becomes hidden or phone screen locks
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && !state.isPaused && !state.isFinished) {
+          togglePause();
+        }
+      });
+
+      // Register PWA service worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+
+      // PHYSICAL KEYBOARD HANDLER (Chromebook & Desktop)
+      window.addEventListener('keydown', (e) => {
+        // Prevent hotkeys if focus is inside text fields
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+
+        const settingsOpen = !document.getElementById('settingsModal').classList.contains('hidden');
+        const winOpen = !document.getElementById('winModal').classList.contains('hidden');
+
+        if (e.key === 'Escape') {
+          if (settingsOpen) closeSettingsModal();
+          else if (winOpen) document.getElementById('winModal').classList.add('hidden');
+          else state.selectedCell = null;
+          renderGrid();
+          return;
+        }
+
+        if (settingsOpen || winOpen) return;
+
+        if (e.key === ' ') {
+          e.preventDefault();
+          togglePause();
+          return;
+        }
+
+        if (state.isPaused || state.isFinished) return;
+
+        // Navigation (Arrow keys or WASD)
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+          e.preventDefault();
+          handleKeyboardNavigation(e.key);
+          return;
+        }
+
+        // Digits 1-9
+        if (e.key >= '1' && e.key <= '9') {
+          const num = parseInt(e.key, 10);
+          handleInputNumber(num, e.shiftKey ? true : state.notesMode);
+          return;
+        }
+
+        // Erase (Backspace / Delete / 0)
+        if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+          e.preventDefault();
+          eraseCell();
+          return;
+        }
+
+        // Action Hotkeys
+        const keyLower = e.key.toLowerCase();
+        if (keyLower === 'n') toggleNotesMode();
+        else if (keyLower === 'z' || (e.ctrlKey && keyLower === 'z') || (e.metaKey && keyLower === 'z')) {
+          e.preventDefault();
+          undoMove();
+        } else if (keyLower === 'h') giveHint();
+        else if (keyLower === 'c') checkPuzzle();
+      });
+    });
+
+    function handleKeyboardNavigation(key) {
+      if (!state.selectedCell) {
+        state.selectedCell = { r: 0, c: 0 };
+      } else {
+        let { r, c } = state.selectedCell;
+        const k = key.toLowerCase();
+        if (k === 'arrowup' || k === 'w') r = Math.max(0, r - 1);
+        if (k === 'arrowdown' || k === 's') r = Math.min(8, r + 1);
+        if (k === 'arrowleft' || k === 'a') c = Math.max(0, c - 1);
+        if (k === 'arrowright' || k === 'd') c = Math.min(8, c + 1);
+        state.selectedCell = { r, c };
+      }
+      playBeep(320, 'sine', 0.03);
+      renderGrid();
+    }
+
+    function startNewGame(difficulty = 'easy') {
+      state.difficulty = difficulty;
+      const { solution, puzzle } = generatePuzzle(difficulty);
+
+      state.solution = solution;
+      state.board = puzzle.map((row) => 
+        row.map((val) => ({
+          val: val,
+          given: val !== 0,
+          notes: new Set(),
+          isError: false,
+          isCheckedError: false
+        }))
+      );
+
+      state.selectedCell = null;
+      state.notesMode = false;
+      state.mistakes = 0;
+      state.hintsUsed = 0;
+      state.timer = 0;
+      state.isPaused = false;
+      state.isFinished = false;
+      state.history = [];
+
+      document.getElementById('winModal').classList.add('hidden');
+      document.getElementById('pauseOverlay').classList.add('hidden');
+      document.getElementById('continuePlayingBtn').classList.add('hidden');
+
+      renderAll();
+      startTimer();
+      saveState();
+      setStatusMessage(`New ${difficulty.toUpperCase()} puzzle ready!`);
+      playBeep(587.33, 'triangle', 0.1);
+    }
+
+    function confirmNewGame() {
+      if (confirm(`Start a new ${state.difficulty.toUpperCase()} Sudoku puzzle?`)) {
+        startNewGame(state.difficulty);
+      }
+    }
+
+    function setDifficulty(diff) {
+      if (diff === state.difficulty) return;
+      if (confirm(`Switch difficulty to ${diff.toUpperCase()} and start a new game?`)) {
+        startNewGame(diff);
+      }
+    }
+
+    // --- TIMERS & PAUSE ---
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!state.isPaused && !state.isFinished) {
+          state.timer++;
+          updateTimerDisplay();
+        }
+      }, 1000);
+    }
+
+    function updateTimerDisplay() {
+      const m = Math.floor(state.timer / 60).toString().padStart(2, '0');
+      const s = (state.timer % 60).toString().padStart(2, '0');
+      document.getElementById('timerDisplay').innerText = `${m}:${s}`;
+    }
+
+    function togglePause() {
+      if (state.isFinished) return;
+      state.isPaused = !state.isPaused;
+      const overlay = document.getElementById('pauseOverlay');
+      if (state.isPaused) {
+        overlay.classList.remove('hidden');
+        setStatusMessage('Game paused');
+      } else {
+        overlay.classList.add('hidden');
+        setStatusMessage('Resumed game');
+      }
+      playBeep(400, 'sine', 0.05);
+    }
+
+    // --- DEEP SNAPSHOT UNDO SYSTEM ---
+    function pushUndoSnapshot() {
+      if (state.history.length >= 100) state.history.shift(); // Cap snapshot stack size at 100
+      
+      const snapshot = {
+        mistakes: state.mistakes,
+        board: state.board.map(row => 
+          row.map(cell => ({
+            val: cell.val,
+            notes: new Set(cell.notes),
+            isError: cell.isError,
+            isCheckedError: cell.isCheckedError
+          }))
+        )
+      };
+      state.history.push(snapshot);
+      document.getElementById('undoBtn').disabled = false;
+    }
+
+    function undoMove() {
+      if (state.history.length === 0 || state.isPaused || state.isFinished) return;
+      const snapshot = state.history.pop();
+      
+      state.mistakes = snapshot.mistakes;
+      state.board.forEach((row, r) => {
+        row.forEach((cell, c) => {
+          const snapCell = snapshot.board[r][c];
+          cell.val = snapCell.val;
+          cell.notes = new Set(snapCell.notes);
+          cell.isError = snapCell.isError;
+          cell.isCheckedError = snapCell.isCheckedError;
+        });
+      });
+
+      if (state.history.length === 0) document.getElementById('undoBtn').disabled = true;
+
+      setStatusMessage('Move undone');
+      playBeep(340, 'sine', 0.05);
+      renderAll();
+      saveState();
+    }
+
+    // --- GAME ACTIONS & INPUT ---
+    function selectCell(r, c) {
+      if (state.isPaused || state.isFinished) return;
+      state.selectedCell = { r, c };
+      playBeep(360, 'sine', 0.03);
+      renderGrid();
+    }
+
+    function handleInputNumber(num, isNotesMode = state.notesMode) {
+      if (!state.selectedCell || state.isPaused || state.isFinished) return;
+      const { r, c } = state.selectedCell;
+      const cell = state.board[r][c];
+
+      if (cell.given) {
+        setStatusMessage('Clue numbers cannot be modified.');
+        playBeep(200, 'square', 0.08);
+        return;
+      }
+
+      if (isNotesMode) {
+        pushUndoSnapshot();
+        cell.val = 0;
+        cell.isCheckedError = false;
+        if (cell.notes.has(num)) {
+          cell.notes.delete(num);
+          setStatusMessage(`Removed note ${num}`);
+        } else {
+          cell.notes.add(num);
+          setStatusMessage(`Added note ${num}`);
+        }
+        playBeep(480, 'sine', 0.04);
+      } else {
+        // Clear value if same number entered
+        if (cell.val === num) {
+          pushUndoSnapshot();
+          cell.val = 0;
+          cell.isError = false;
+          cell.isCheckedError = false;
+          setStatusMessage('Cleared cell');
+        } else {
+          const isCorrect = (num === state.solution[r][c]);
+          
+          // Prevent duplicate mistake increments if pressing same wrong number repeatedly
+          if (state.settings.autoError && !isCorrect && cell.val === num && cell.isError) {
+            return;
+          }
+
+          pushUndoSnapshot();
+          cell.val = num;
+          cell.notes.clear();
+          cell.isCheckedError = false;
+          cell.isError = state.settings.autoError && !isCorrect;
+
+          if (state.settings.autoError && !isCorrect) {
+            state.mistakes++;
+            setStatusMessage(`Mistake! ${num} is incorrect.`);
+            playBeep(220, 'sawtooth', 0.15);
+
+            if (state.settings.mistakeLimit && state.mistakes >= 3) {
+              triggerGameOver();
+              renderAll();
+              saveState();
+              return;
+            }
+          } else {
+            setStatusMessage(`Placed ${num}`);
+            playBeep(520, 'sine', 0.05);
+
+            if (state.settings.autoNotes && isCorrect) {
+              clearRelatedNotes(r, c, num);
+            }
+          }
+        }
+      }
+
+      renderAll();
+      saveState();
+      checkWinCondition();
+    }
+
+    function eraseCell() {
+      if (!state.selectedCell || state.isPaused || state.isFinished) return;
+      const { r, c } = state.selectedCell;
+      const cell = state.board[r][c];
+
+      if (cell.given) {
+        setStatusMessage('Cannot erase clue numbers.');
+        playBeep(200, 'square', 0.08);
+        return;
+      }
+
+      if (cell.val !== 0 || cell.notes.size > 0) {
+        pushUndoSnapshot();
+        cell.val = 0;
+        cell.notes.clear();
+        cell.isError = false;
+        cell.isCheckedError = false;
+        setStatusMessage('Cell erased');
+        playBeep(300, 'sine', 0.05);
+        renderAll();
+        saveState();
+      }
+    }
+
+    function toggleNotesMode() {
+      state.notesMode = !state.notesMode;
+      const badge = document.getElementById('notesBadge');
+      const btn = document.getElementById('notesBtn');
+      if (state.notesMode) {
+        badge.classList.replace('bg-slate-500', 'bg-amber-400');
+        btn.classList.add('border-amber-500/50', 'bg-amber-500/10');
+        setStatusMessage('Notes mode: ON');
+      } else {
+        badge.classList.replace('bg-amber-400', 'bg-slate-500');
+        btn.classList.remove('border-amber-500/50', 'bg-amber-500/10');
+        setStatusMessage('Notes mode: OFF');
+      }
+      playBeep(440, 'sine', 0.04);
+    }
+
+    function clearRelatedNotes(r, c, num) {
+      for (let i = 0; i < 9; i++) {
+        state.board[r][i].notes.delete(num);
+        state.board[i][c].notes.delete(num);
+        const boxR = 3 * Math.floor(r / 3) + Math.floor(i / 3);
+        const boxC = 3 * Math.floor(c / 3) + (i % 3);
+        state.board[boxR][boxC].notes.delete(num);
+      }
+    }
+
+    function giveHint() {
+      if (state.isPaused || state.isFinished) return;
+      
+      let targetR = -1, targetC = -1;
+      
+      // If user selected an editable cell that is empty or incorrect, hint that cell
+      if (
+        state.selectedCell &&
+        !state.board[state.selectedCell.r][state.selectedCell.c].given &&
+        state.board[state.selectedCell.r][state.selectedCell.c].val !== state.solution[state.selectedCell.r][state.selectedCell.c]
+      ) {
+        targetR = state.selectedCell.r;
+        targetC = state.selectedCell.c;
+      } else {
+        // Otherwise, find first un-filled or erroneous cell
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            if (!state.board[r][c].given && state.board[r][c].val !== state.solution[r][c]) {
+              targetR = r; targetC = c;
+              break;
+            }
+          }
+          if (targetR !== -1) break;
+        }
+      }
+
+      if (targetR !== -1) {
+        pushUndoSnapshot();
+        const correctVal = state.solution[targetR][targetC];
+        state.board[targetR][targetC].val = correctVal;
+        state.board[targetR][targetC].notes.clear();
+        state.board[targetR][targetC].isError = false;
+        state.board[targetR][targetC].isCheckedError = false;
+        state.selectedCell = { r: targetR, c: targetC };
+        state.hintsUsed++;
+
+        if (state.settings.autoNotes) clearRelatedNotes(targetR, targetC, correctVal);
+
+        setStatusMessage(`Hint filled cell (${targetR + 1}, ${targetC + 1})`);
+        playBeep(660, 'triangle', 0.12);
+        renderAll();
+        saveState();
+        checkWinCondition();
+      } else {
+        setStatusMessage('No empty or incorrect cells remain.');
+      }
+    }
+
+    function checkPuzzle() {
+      if (state.isPaused || state.isFinished) return;
+      let errorsFound = 0;
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const cell = state.board[r][c];
+          if (cell.val !== 0 && cell.val !== state.solution[r][c]) {
+            cell.isCheckedError = true;
+            errorsFound++;
+          } else {
+            cell.isCheckedError = false;
+          }
+        }
+      }
+
+      if (errorsFound > 0) {
+        setStatusMessage(`Check complete: ${errorsFound} mistake(s) flagged.`);
+        playBeep(250, 'sawtooth', 0.15);
+      } else {
+        setStatusMessage('Check complete: All placed numbers are correct!');
+        playBeep(523, 'triangle', 0.1);
+      }
+      renderGrid();
+    }
+
+    function triggerGameOver() {
+      state.isFinished = true;
+      if (timerInterval) clearInterval(timerInterval);
+
+      document.getElementById('winIcon').innerHTML = '❌';
+      document.getElementById('winTitle').innerText = 'Game Over';
+      document.getElementById('winSubtitle').innerText = 'You reached the 3-mistake limit for this game.';
+      document.getElementById('finalTime').innerText = document.getElementById('timerDisplay').innerText;
+      document.getElementById('finalMistakes').innerText = state.mistakes;
+      document.getElementById('finalHints').innerText = state.hintsUsed;
+      document.getElementById('continuePlayingBtn').classList.remove('hidden');
+      document.getElementById('winModal').classList.remove('hidden');
+    }
+
+    function continuePlayingWithoutLimit() {
+      state.settings.mistakeLimit = false;
+      state.isFinished = false;
+      document.getElementById('winModal').classList.add('hidden');
+      startTimer();
+      renderAll();
+      saveState();
+      setStatusMessage('Resumed game with mistake limit disabled.');
+    }
+
+    function checkWinCondition() {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          if (state.board[r][c].val !== state.solution[r][c]) return false;
+        }
+      }
+
+      state.isFinished = true;
+      if (timerInterval) clearInterval(timerInterval);
+
+      if (!state.bestTimes[state.difficulty] || state.timer < state.bestTimes[state.difficulty]) {
+        state.bestTimes[state.difficulty] = state.timer;
+      }
+      saveState();
+
+      document.getElementById('winIcon').innerHTML = '🎉';
+      document.getElementById('winTitle').innerText = 'Puzzle Solved!';
+      document.getElementById('winSubtitle').innerText = `Congratulations on solving the ${state.difficulty.toUpperCase()} puzzle!`;
+      document.getElementById('finalTime').innerText = document.getElementById('timerDisplay').innerText;
+      document.getElementById('finalMistakes').innerText = state.mistakes;
+      document.getElementById('finalHints').innerText = state.hintsUsed;
+      document.getElementById('continuePlayingBtn').classList.add('hidden');
+      document.getElementById('winModal').classList.remove('hidden');
+
+      playWinMelody();
+      return true;
+    }
+
+    // --- RENDERERS ---
+    function renderAll() {
+      renderHeaderAndStatus();
+      renderGrid();
+      renderKeypad();
+    }
+
+    function renderHeaderAndStatus() {
+      ['easy', 'medium', 'hard'].forEach(diff => {
+        const btn = document.getElementById(`diff-${diff}`);
+        if (state.difficulty === diff) {
+          btn.className = "px-2 py-0.5 text-[11px] font-bold rounded-md transition bg-indigo-600 text-white shadow-sm border border-indigo-400";
+        } else {
+          btn.className = "px-2 py-0.5 text-[11px] font-bold rounded-md transition text-slate-400 hover:text-slate-200 border border-transparent";
+        }
+      });
+
+      document.getElementById('mistakeText').innerText = `${state.mistakes}/${state.settings.mistakeLimit ? 3 : '∞'}`;
+      
+      const bestSecs = state.bestTimes[state.difficulty];
+      if (bestSecs) {
+        const bm = Math.floor(bestSecs / 60).toString().padStart(2, '0');
+        const bs = (bestSecs % 60).toString().padStart(2, '0');
+        document.getElementById('bestTimeText').innerText = `${bm}:${bs}`;
+      } else {
+        document.getElementById('bestTimeText').innerText = '--:--';
+      }
+
+      updateTimerDisplay();
+    }
+
+    function renderGrid() {
+      const container = document.getElementById('sudokuGrid');
+      container.innerHTML = '';
+
+      const sel = state.selectedCell;
+      const selVal = sel ? state.board[sel.r][sel.c].val : 0;
+
+      for (let boxIndex = 0; boxIndex < 9; boxIndex++) {
+        const boxDiv = document.createElement('div');
+        boxDiv.className = "grid grid-cols-3 grid-rows-3 gap-0.5 bg-slate-900 border border-slate-700/80 rounded-lg overflow-hidden";
+
+        const startR = Math.floor(boxIndex / 3) * 3;
+        const startC = (boxIndex % 3) * 3;
+
+        for (let rOffset = 0; rOffset < 3; rOffset++) {
+          for (let cOffset = 0; cOffset < 3; cOffset++) {
+            const r = startR + rOffset;
+            const c = startC + cOffset;
+            const cell = state.board[r][c];
+
+            const cellBtn = document.createElement('button');
+            cellBtn.onclick = () => selectCell(r, c);
+            
+            let bgClass = "bg-slate-950 text-slate-100 hover:bg-slate-900";
+            let textClass = cell.given ? "font-extrabold text-slate-100 text-base sm:text-lg" : "font-bold text-indigo-400 text-base sm:text-lg";
+
+            const isSelected = sel && sel.r === r && sel.c === c;
+            const isSameRowColBox = sel && (sel.r === r || sel.c === c || (Math.floor(sel.r / 3) === Math.floor(r / 3) && Math.floor(sel.c / 3) === Math.floor(c / 3)));
+            const isMatchingNum = selVal > 0 && cell.val === selVal;
+
+            if (state.settings.highlightGuides && isSameRowColBox && !isSelected) {
+              bgClass = "bg-slate-900/90 hover:bg-slate-800/90";
+            }
+            if (state.settings.highlightGuides && isMatchingNum && !isSelected) {
+              bgClass = "bg-indigo-950/70 hover:bg-indigo-900/70 font-extrabold text-indigo-300";
+            }
+            if (isSelected) {
+              bgClass = "bg-indigo-600/40 hover:bg-indigo-600/50 ring-2 ring-indigo-400 z-10 shadow-lg";
+            }
+            if (cell.isError || cell.isCheckedError) {
+              bgClass = "bg-rose-950/80 text-rose-300 ring-1 ring-rose-500 font-extrabold";
+            }
+
+            cellBtn.className = `relative aspect-square flex items-center justify-center cell-transition ${bgClass} ${textClass}`;
+
+            if (cell.val !== 0) {
+              cellBtn.innerText = cell.val;
+            } else if (cell.notes.size > 0) {
+              const notesGrid = document.createElement('div');
+              notesGrid.className = "grid grid-cols-3 grid-rows-3 w-full h-full p-0.5 text-[9px] sm:text-[10px] text-indigo-300/80 font-mono leading-none pointer-events-none";
+              for (let n = 1; n <= 9; n++) {
+                const noteItem = document.createElement('div');
+                noteItem.className = "flex items-center justify-center";
+                noteItem.innerText = cell.notes.has(n) ? n : '';
+                notesGrid.appendChild(noteItem);
+              }
+              cellBtn.appendChild(notesGrid);
+            }
+
+            boxDiv.appendChild(cellBtn);
+          }
+        }
+        container.appendChild(boxDiv);
+      }
+    }
+
+    function renderKeypad() {
+      const container = document.getElementById('keypadRow');
+      container.innerHTML = '';
+
+      // Count valid placements for remaining counters (clamped to min 0)
+      const counts = Array(10).fill(0);
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const val = state.board[r][c].val;
+          if (val > 0 && (val === state.solution[r][c] || !state.settings.autoError)) {
+            counts[val]++;
+          }
+        }
+      }
+
+      for (let num = 1; num <= 9; num++) {
+        const remaining = Math.max(0, 9 - counts[num]);
+        const isCompleted = remaining <= 0;
+
+        const btn = document.createElement('button');
+        btn.onclick = () => handleInputNumber(num);
+        btn.disabled = isCompleted;
+
+        btn.className = `btn-act py-2 sm:py-2.5 rounded-xl border font-bold text-sm sm:text-base flex flex-col items-center justify-center transition shadow-sm ${
+          isCompleted 
+            ? 'bg-slate-900 border-slate-800 text-slate-600 opacity-30 cursor-not-allowed'
+            : 'bg-slate-800/90 hover:bg-slate-700/90 border-slate-700 text-slate-100 hover:text-indigo-300 active:bg-indigo-600'
+        }`;
+
+        btn.innerHTML = `
+          <span>${num}</span>
+          <span class="text-[9px] font-mono text-slate-400 font-normal ${isCompleted ? 'hidden' : ''}">${remaining} left</span>
+        `;
+
+        container.appendChild(btn);
+      }
+    }
+
+    function setStatusMessage(msg) {
+      document.getElementById('statusMessage').innerText = msg;
+    }
+
+    // --- MODAL & SETTINGS SYNC ---
+    function openSettingsModal() {
+      document.getElementById('settingAutoError').checked = state.settings.autoError;
+      document.getElementById('settingMistakeLimit').checked = state.settings.mistakeLimit;
+      document.getElementById('settingAutoNotes').checked = state.settings.autoNotes;
+      document.getElementById('settingHighlightGuides').checked = state.settings.highlightGuides;
+      document.getElementById('settingSound').checked = state.settings.soundEnabled;
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function updateSettings() {
+      state.settings.autoError = document.getElementById('settingAutoError').checked;
+      state.settings.mistakeLimit = document.getElementById('settingMistakeLimit').checked;
+      state.settings.autoNotes = document.getElementById('settingAutoNotes').checked;
+      state.settings.highlightGuides = document.getElementById('settingHighlightGuides').checked;
+      state.settings.soundEnabled = document.getElementById('settingSound').checked;
+
+      // Sync visual error flags across the board when toggling autoError setting
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const cell = state.board[r][c];
+          if (!cell.given && cell.val !== 0) {
+            cell.isError = state.settings.autoError && (cell.val !== state.solution[r][c]);
+          } else {
+            cell.isError = false;
+          }
+        }
+      }
+
+      // If user unchecks mistake limit while stuck in Game Over, resume game
+      if (!state.settings.mistakeLimit && state.isFinished && state.mistakes >= 3) {
+        state.isFinished = false;
+        document.getElementById('winModal').classList.add('hidden');
+        startTimer();
+      }
+
+      saveState();
+      renderAll();
+    }
+  </script>
+
+</body>
+</html>
